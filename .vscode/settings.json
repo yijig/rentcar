@@ -1,4 +1,20 @@
+
+
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "java.compile.nullAnalysis.mode": "automatic"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.compile.nullAnalysis.mode": "automatic",
+
+  "editor.formatOnSave": true,
+
+  // 把 .jsp 視為 html（只影響 VS Code 語法上色/排版）
+  "files.associations": { "*.jsp": "html" },
+
+  "emmet.includeLanguages": { "jsp": "html" }
+
+  ,
+  
+
+  // "[html]": {
+  //   "editor.defaultFormatter": "vscode.html-language-features" // 或 "vscode.html-language-features"
+  // }
 }
