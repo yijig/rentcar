@@ -1,16 +1,27 @@
 package com.example.rentcar.controller;
 
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.example.rentcar.dao.MemberDAO;
+import com.example.rentcar.dto.CodeDTO;
+import com.example.rentcar.dto.MemberDTO;
+import com.example.rentcar.dto.ValidationResult;
 import com.example.rentcar.model.Member;
+import com.example.rentcar.service.AuthService;
+import com.example.rentcar.service.MailService;
 
 import jakarta.servlet.http.HttpSession;
 
@@ -19,6 +30,15 @@ public class AuthController {
 
     @Autowired
     private MemberDAO memberDAO;
+
+    private final AuthService authService;
+    private final MailService mailService;
+
+    // 建構子注入
+    public AuthController(AuthService authService, MailService mailService) {
+        this.authService = authService;
+        this.mailService = mailService;
+    }
 
     @RequestMapping("/login")
     @ResponseBody
@@ -45,23 +65,132 @@ public class AuthController {
 
     @RequestMapping("/sign")
     @ResponseBody
-    public String sign(@RequestParam("signAccount") String account, @RequestParam("signPhone") String phone,
-            @RequestParam("signEmail") String email, @RequestParam("signPassword") String password,
-            @RequestParam("signPassword2") String password2, Model model) {
+    public ResponseEntity<?> sign(@RequestBody MemberDTO dto, Model model) {
 
-        System.out.println(account);
-        System.out.println(phone);
-        System.out.println(email);
-        System.out.println(password);
-        System.out.println(password2);
-        Member member = new Member(account, password, "", email, phone, "", "", "", "user");
+        ValidationResult vr = authService.validateSign(dto);
 
-        memberDAO.insert(member);
+        if (!vr.isSuccess()) {
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "msg", vr.getMsg()));
+        }
 
-        System.out.println("註冊成功");
+        // 驗證通過 → 存 DB
+        Member m = new Member();
+        m.setAccount(dto.getAccount());
+        m.setPassword(dto.getPassword());
+        m.setPhone(dto.getPhone());
+        m.setEmail(dto.getEmail());
 
-        return "密碼輸入錯誤!";
+        memberDAO.insert(m);
 
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "msg", "註冊成功"));
+
+    }
+
+    @RequestMapping("/loginImmediate")
+    @ResponseBody
+    public List<String> loginImmediate() {
+
+        return memberDAO.findAllAccount();
+
+    }
+
+    @RequestMapping("/currentContent")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> currentContent(@RequestBody MemberDTO dto, HttpSession session) {
+
+        Map<String, Object> result = new HashMap<>();
+
+        Member member = memberDAO.findByAccount(dto.getAccount());
+
+        if (member == null) {
+            result.put("success", false);
+            result.put("msg", "帳號不存在");
+            return ResponseEntity.ok(result);
+        }
+
+        // 帳號存在，再檢查信箱
+        if (!member.getEmail().equals(dto.getEmail())) {
+            result.put("success", false);
+            result.put("msg", "信箱不正確");
+            return ResponseEntity.ok(result);
+        }
+
+        // 帳號 + 信箱都對
+        String code = mailService.sendVerificationCode(dto.getEmail());
+        // 這裡通常會把 code 暫存在 session 或 redis，之後用來比對
+        result.put("success", true);
+        result.put("msg", "驗證碼已寄出");
+
+        session.setAttribute("verifyCode", code);
+        session.setAttribute("saveaccount", member);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/verifyCode")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> verifyCode(@RequestBody CodeDTO dto,
+            HttpSession session) {
+
+        String code = dto.getCode(); // 這裡就可以拿到前端傳來的驗證碼
+
+        String emailCode = (String) session.getAttribute("verifyCode");
+
+        System.out.println(emailCode + "信箱的驗證信");
+
+        Map<String, Object> result = new HashMap<>();
+        if (emailCode.equals(code)) {
+            result.put("success", true);
+            result.put("msg", "驗證成功");
+        } else {
+            result.put("success", false);
+            result.put("msg", "驗證碼錯誤");
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/resetPassword")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> resetPassword(@RequestBody MemberDTO dto,
+            HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+
+        String pwd = dto.getPassword();
+        String pwd2 = dto.getPassword2();
+
+        // 0) 必填
+        if (pwd == null || pwd2 == null || pwd.isBlank() || pwd2.isBlank()) {
+            result.put("success", false);
+            result.put("msg", "請輸入密碼與確認密碼");
+            return ResponseEntity.ok(result);
+        }
+
+        // 1) 密碼格式（≥8碼，含大小寫與數字）
+        String rule = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$";
+        if (!pwd.matches(rule)) {
+            result.put("success", false);
+            result.put("msg", "密碼需至少 8 碼，且包含大小寫字母與數字");
+            return ResponseEntity.ok(result);
+        }
+
+        // 2) 兩次一致
+        if (!pwd.equals(pwd2)) {
+            result.put("success", false);
+            result.put("msg", "兩次輸入的密碼不一致");
+            return ResponseEntity.ok(result);
+        }
+
+        Member m = (Member) session.getAttribute("saveaccount");
+        m.setPassword(pwd);
+        memberDAO.update(m);
+        session.removeAttribute("saveaccount");
+        result.put("success", true);
+        result.put("msg", "修改成功");
+        return ResponseEntity.ok(result);
     }
 
     @RequestMapping("/infSave")
@@ -100,32 +229,27 @@ public class AuthController {
 
     @RequestMapping("/secSave")
     @ResponseBody
-    public String secSave(@RequestParam("editOldPassword") String oldPassword, @RequestParam("editNewPassword") String newPassword,
+    public String secSave(@RequestParam("editOldPassword") String oldPassword,
+            @RequestParam("editNewPassword") String newPassword,
             @RequestParam("editNewPassword2") String newPassword2, HttpSession session, Model model) {
 
         // Member member =(Member)session.getAttribute("user");
         Member member = memberDAO.findByAccount("a123");
-                System.out.println(oldPassword);
-                System.out.println(member.getPassword());
-                if (!oldPassword.equals(member.getPassword())) {
 
-                    return "舊密碼輸入錯誤";
-                }
-                else  {
-                    if(newPassword.equals(newPassword2)){
-                        member.setPassword(newPassword);
-                        memberDAO.update(member);
+        if (!oldPassword.equals(member.getPassword())) {
 
-                    return "修改成功";}
-                    else{
-                        return "新密碼不一樣";
-                    }
-                }
-                
+            return "舊密碼輸入錯誤";
+        } else {
+            if (newPassword.equals(newPassword2)) {
+                member.setPassword(newPassword);
+                memberDAO.update(member);
 
-        
+                return "修改成功";
+            } else {
+                return "新密碼不一樣";
+            }
+        }
+
     }
-
-    
 
 }

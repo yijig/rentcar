@@ -10,7 +10,7 @@ import java.sql.SQLException;
 
 import java.util.List;
 
-@Repository  // ✅ Spring 會自動管理這個類別，讓你能 @Autowired 使用
+@Repository // ✅ Spring 會自動管理這個類別，讓你能 @Autowired 使用
 public class MemberDAO {
 
     @Autowired
@@ -22,33 +22,34 @@ public class MemberDAO {
         return jdbc.query(sql, this::mapRowToMember);
     }
 
+    public List<String> findAllAccount() {
+        String sql = "SELECT account FROM member";
+        return jdbc.queryForList(sql, String.class);
+    }
+
     // ✅ 查單筆 by ID
     public Member findById(int id) {
         String sql = "SELECT * FROM member WHERE id = ?";
         List<Member> members = jdbc.query(sql, this::mapRowToMember, id);
-        
-        
-        
-        if(members.isEmpty()){
+
+        if (members.isEmpty()) {
             System.out.println("查無資料");
-        return null;}
-        else{
+            return null;
+        } else {
 
             return members.get(0);
         }
     }
 
-    //查帳號
+    // 查帳號
     public Member findByAccount(String account) {
         String sql = "SELECT * FROM member WHERE account = ?";
-        
+
         List<Member> members = jdbc.query(sql, this::mapRowToMember, account);
-        
-        
-        
-        if(members.isEmpty()){
-        return null;}
-        else{
+
+        if (members.isEmpty()) {
+            return null;
+        } else {
 
             return members.get(0);
         }
@@ -57,20 +58,20 @@ public class MemberDAO {
     // ✅ 新增
     public int insert(Member m) {
         String sql = "INSERT INTO member (account, password, name, email, phone, gender, address, photo_url, role) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         return jdbc.update(sql,
-            m.getAccount(), m.getPassword(), m.getName(), m.getEmail(),
-            m.getPhone(), m.getGender(), m.getAddress(), m.getPhoto_url(),
-            m.getRole());
+                m.getAccount(), m.getPassword(), m.getName(), m.getEmail(),
+                m.getPhone(), m.getGender(), m.getAddress(), m.getPhoto_url(),
+                m.getRole());
     }
 
     // ✅ 修改
     public int update(Member m) {
         String sql = "UPDATE member SET account=?, password=?, name=?, email=?, phone=?, gender=?, address=?, photo_url=?, role=? ,birthday=? WHERE id=?";
         return jdbc.update(sql,
-            m.getAccount(), m.getPassword(), m.getName(), m.getEmail(),
-            m.getPhone(), m.getGender(), m.getAddress(), m.getPhoto_url(),
-            m.getRole(),m.getBirthday(), m.getId());
+                m.getAccount(), m.getPassword(), m.getName(), m.getEmail(),
+                m.getPhone(), m.getGender(), m.getAddress(), m.getPhoto_url(),
+                m.getRole(), m.getBirthday(), m.getId());
     }
 
     // ✅ 刪除
@@ -83,16 +84,12 @@ public class MemberDAO {
     private Member mapRowToMember(ResultSet rs, int rowNum) throws SQLException {
         Member m = new Member();
 
-        java.sql.Date date =rs.getDate("birthday");
+        java.sql.Date date = rs.getDate("birthday");
 
-        if(date!=null){
+        if (date != null) {
             m.setBirthday((rs.getDate("birthday").toLocalDate()));
         }
-        
-        
-           
 
-        
         m.setId(rs.getInt("id"));
         m.setAccount(rs.getString("account"));
         m.setPassword(rs.getString("password"));
@@ -104,7 +101,7 @@ public class MemberDAO {
         m.setPhoto_url(rs.getString("photo_url"));
         m.setRole(rs.getString("role"));
         m.setCreate_Time(rs.getTimestamp("create_time").toLocalDateTime());
-        
+
         return m;
     }
 }
